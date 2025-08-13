@@ -1,6 +1,6 @@
 # Lost Ark Gold Value Calculator
 
-A simple gold value calculator for Lost Ark players to track gold-to-USD conversion rates on EU servers via web scraping form the official G2G marketplace.
+A simple gold value calculator for Lost Ark players to track gold-to-USD conversion rates on EU servers via web scraping from the official G2G marketplace.
 
 ## Features
 
