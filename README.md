@@ -1,1 +1,0 @@
-# lost-ark-gold-tracker-g2g-calculator
