@@ -1,13 +1,15 @@
+# render.yaml
 services:
   - type: web
     name: lost-ark-backend
     runtime: node
-    plan: free
     buildCommand: npm install
     startCommand: node server.js
+    env: node
+    plan: free
 
   - type: static
     name: lost-ark-frontend
-    plan: free
     buildCommand: npm install && npm run build
     staticPublishPath: ./build
+    plan: free
