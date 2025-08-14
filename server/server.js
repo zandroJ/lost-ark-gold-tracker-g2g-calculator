@@ -19,29 +19,46 @@ async function scrapeG2G() {
     const response = await axios.get('https://www.g2g.com/categories/lost-ark-gold', {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9'
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'max-age=0',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': 'https://www.g2g.com/'
       }
     });
 
     const $ = cheerio.load(response.data);
     const serverMap = new Map();
 
+    console.log(`📄 Page loaded with ${response.data.length} characters`);
+    
     // Process each offer card
-    $('div.offer-list-item-wrapper').each((i, element) => {
+    $('div[data-v-1c4d3f28]').each((i, element) => {
       const card = $(element);
       
-      // Extract server name
+      // Extract server name - using multiple selectors
       let server = card.find('.offer-seller a').text().trim() || 
                   card.find('.text-body1.ellipsis-2-lines').text().trim() || 
-                  card.find('.text-h6').text().trim();
+                  card.find('.text-h6').text().trim() ||
+                  card.find('.seller-name').text().trim() ||
+                  card.find('.offer-title').text().trim();
       
       // Extract price
-      const priceText = card.find('.offer-price-amount').text().trim();
+      let priceText = card.find('.offer-price-amount').text().trim() || 
+                     card.find('.price').text().trim() || 
+                     card.find('.amount').text().trim();
+      
+      // Extract the numeric value from price text
       const priceMatch = priceText.match(/[\d.]+/);
       const price = priceMatch ? parseFloat(priceMatch[0]) : 0;
       
       // Extract offers count
-      const offersText = card.find('.offer-stock').text().trim();
+      let offersText = card.find('.offer-stock').text().trim() || 
+                      card.find('.stock').text().trim() || 
+                      card.find('.available').text().trim();
+      
       const offersMatch = offersText.match(/\d+/);
       const offers = offersMatch ? parseInt(offersMatch[0], 10) : 0;
       
@@ -50,7 +67,7 @@ async function scrapeG2G() {
         server = server.replace(/\s+/g, ' ').replace(/\s-\sEU Central/i, '').trim();
         
         // Deduplicate by server name
-        if (!serverMap.has(server)) {
+        if (!serverMap.has(server) {
           serverMap.set(server, {
             server,
             offers,
@@ -61,12 +78,52 @@ async function scrapeG2G() {
       }
     });
 
+    // Alternative approach if no cards found
+    if (serverMap.size === 0) {
+      console.log("⚠️ No cards found, trying alternative approach");
+      
+      // Look for server names in the page
+      $('div').each((i, element) => {
+        const text = $(element).text();
+        if (/EU Central/i.test(text) && /USD/i.test(text)) {
+          const serverMatch = text.match(/([A-Za-z]+)\s+-\s+EU Central/i);
+          const priceMatch = text.match(/USD\s*([\d.]+)/i);
+          const offersMatch = text.match(/(\d+)\s+offers/i);
+          
+          if (serverMatch && priceMatch) {
+            const server = serverMatch[1].trim();
+            const price = parseFloat(priceMatch[1]);
+            const offers = offersMatch ? parseInt(offersMatch[1], 10) : 0;
+            
+            if (!serverMap.has(server)) {
+              serverMap.set(server, {
+                server,
+                offers,
+                priceUSD: price,
+                valuePer100k: price ? (100000 * price).toFixed(6) : '0.000000'
+              });
+            }
+          }
+        }
+      });
+    }
+
     euServerData = Array.from(serverMap.values())
       .sort((a, b) => a.priceUSD - b.priceUSD);
     
     console.log(`✅ Scraped ${euServerData.length} EU Central servers`);
+    
+    // Log the first server if available for debugging
+    if (euServerData.length > 0) {
+      console.log(`📊 Sample server: ${euServerData[0].server} - $${euServerData[0].priceUSD}`);
+    }
   } catch (err) {
     console.error('❌ Scraping error:', err.message);
+    console.error('❌ Error details:', err.response ? {
+      status: err.response.status,
+      headers: err.response.headers,
+      data: err.response.data.substring(0, 500) // First 500 characters
+    } : 'No response details');
   }
 }
 
