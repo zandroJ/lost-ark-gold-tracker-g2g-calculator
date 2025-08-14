@@ -67,7 +67,7 @@ async function scrapeG2G() {
         server = server.replace(/\s+/g, ' ').replace(/\s-\sEU Central/i, '').trim();
         
         // Deduplicate by server name
-        if (!serverMap.has(server) {
+        if (!serverMap.has(server)) {
           serverMap.set(server, {
             server,
             offers,
