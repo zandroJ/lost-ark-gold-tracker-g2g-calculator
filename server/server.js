@@ -1,8 +1,9 @@
 // server.js
 const express = require('express');
 const cors = require('cors');
-const puppeteer = require('puppeteer');
 const cron = require('node-cron');
+const chromium = require('chrome-aws-lambda');
+const puppeteer = require('puppeteer-core');
 
 const app = express();
 app.use(cors());
@@ -34,16 +35,14 @@ async function scrapeG2G() {
   try {
     console.log("🚀 Starting G2G scrape...");
 
-const path = require('path');
-const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath();
+    const executablePath = await chromium.executablePath;
 
-browser = await puppeteer.launch({
-  headless: true,
-  executablePath: chromePath,
-  args: ['--no-sandbox', '--disable-setuid-sandbox']
-});
-
-
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath,
+      headless: chromium.headless,
+    });
 
     const page = await browser.newPage();
     await page.setUserAgent(
