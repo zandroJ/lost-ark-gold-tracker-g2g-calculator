@@ -34,10 +34,14 @@ async function scrapeG2G() {
   try {
     console.log("🚀 Starting G2G scrape...");
 
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+ const chromiumPath = puppeteer.executablePath();
+
+browser = await puppeteer.launch({
+  headless: true,
+  executablePath: chromiumPath, // <-- tell Puppeteer where Chrome is
+  args: ['--no-sandbox', '--disable-setuid-sandbox']
+});
+
 
     const page = await browser.newPage();
     await page.setUserAgent(
