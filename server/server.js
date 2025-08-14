@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios');
-const cheerio = require('cheerio');
+const puppeteer = require('puppeteer');
 const cron = require('node-cron');
 
 const app = express();
@@ -10,96 +9,174 @@ app.use(cors());
 let euServerData = [];
 let lastScrapeTime = null;
 
-async function scrapeG2G() {
-  try {
-    console.log("🚀 Starting G2G scrape...");
-    
-    const response = await axios.get('https://www.g2g.com/categories/lost-ark-gold', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive'
-      }
-    });
+// Railway-optimized browser launch
+async function launchBrowser() {
+  return puppeteer.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--single-process'
+    ]
+  });
+}
 
-    const $ = cheerio.load(response.data);
-    const serverMap = new Map();
-
-    // Find all offer cards
-    $('div.offer-list-item-wrapper').each((i, element) => {
-      const card = $(element);
-      
-      // Extract server name
-      const serverElement = card.find('.offer-seller a').first() || 
-                           card.find('.text-body1.ellipsis-2-lines').first() || 
-                           card.find('.text-h6').first();
-      let server = serverElement.text().trim();
-      
-      // Extract price
-      const priceElement = card.find('.offer-price-amount').first() || 
-                          card.find('.price').first();
-      const priceText = priceElement.text().trim();
-      const priceMatch = priceText.match(/[\d.]+/);
-      const price = priceMatch ? parseFloat(priceMatch[0]) : 0;
-      
-      // Extract offers count
-      const offersElement = card.find('.offer-stock').first() || 
-                           card.find('.stock').first();
-      const offersText = offersElement.text().trim();
-      const offersMatch = offersText.match(/\d+/);
-      const offers = offersMatch ? parseInt(offersMatch[0], 10) : 0;
-      
-      // Only process EU Central servers
-      if (server && /EU Central/i.test(server)) {
-        // Clean server name
-        server = server
-          .replace(/\s+/g, ' ')
-          .replace(/\s-\sEU Central/i, '')
-          .trim();
-        
-        // Deduplicate by server name
-        if (!serverMap.has(server) && price > 0) {
-          serverMap.set(server, {
-            server,
-            offers,
-            priceUSD: price,
-            valuePer100k: (100000 * price).toFixed(6)
-          });
+async function autoScroll(page) {
+  await page.evaluate(async () => {
+    await new Promise(resolve => {
+      let totalHeight = 0;
+      const distance = 300;
+      const timer = setInterval(() => {
+        const scrollHeight = document.body.scrollHeight;
+        window.scrollBy(0, distance);
+        totalHeight += distance;
+        if (totalHeight >= scrollHeight) {
+          clearInterval(timer);
+          resolve();
         }
-      }
+      }, 200);
+    });
+  });
+}
+
+async function scrapeG2G() {
+  let browser;
+  try {
+    browser = await launchBrowser();
+    const page = await browser.newPage();
+    
+    // Configure browser settings
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36');
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+    await page.setViewport({ width: 1280, height: 900 });
+
+    // Navigate with robust timeout handling
+    console.log('Navigating to G2G...');
+    await page.goto('https://www.g2g.com/categories/lost-ark-gold', {
+      waitUntil: 'networkidle2',
+      timeout: 60000
     });
 
-    euServerData = Array.from(serverMap.values())
-      .sort((a, b) => a.priceUSD - b.priceUSD);
+    // Wait for content to load
+    await page.waitForSelector('div.q-pa-md', { timeout: 30000 });
+    await autoScroll(page);
+    await page.waitForTimeout(1000); // Extra safety delay
+
+    // Extract data
+    const scrapedData = await page.evaluate(() => {
+      const results = [];
+      const cards = document.querySelectorAll('div.q-pa-md');
+      
+      cards.forEach(card => {
+        // Find server name
+        const serverEl = card.querySelector('.text-body1, .text-h6, h3');
+        if (!serverEl) return;
+        const server = serverEl.textContent.trim();
+        
+        // Find USD price
+        const usdSpan = Array.from(card.querySelectorAll('span'))
+          .find(el => el.textContent.includes('USD') && el.previousElementSibling);
+        
+        if (!usdSpan) return;
+        const priceText = usdSpan.previousElementSibling.textContent.replace(/[^\d.]/g, '');
+        const price = parseFloat(priceText);
+        if (isNaN(price)) return;
+        
+        // Find offer count
+        const offersEl = card.querySelector('.g-chip-counter');
+        const offers = offersEl ? parseInt(offersEl.textContent.replace(/\D/g, '')) || 0 : 0;
+        
+        results.push({
+          server,
+          offers,
+          priceUSD: price,
+          valuePer100k: (100000 * price).toFixed(6)
+        });
+      });
+      
+      return results;
+    });
+
+    // Filter EU servers
+    euServerData = scrapedData.filter(item => 
+      /EU Central/i.test(item.server)
+    );
     
     lastScrapeTime = new Date();
-    console.log(`✅ Scraped ${euServerData.length} EU Central servers`);
+    console.log(`Scraped ${euServerData.length} EU servers at ${lastScrapeTime}`);
     
-    if (euServerData.length > 0) {
-      console.log(`📊 Sample server: ${euServerData[0].server} - $${euServerData[0].priceUSD}`);
-    }
   } catch (err) {
-    console.error('❌ Scraping error:', err.message);
-    console.error('❌ Error details:', err.response ? {
-      status: err.response.status,
-      data: err.response.data.substring(0, 500) + '...'
-    } : 'No response details');
+    console.error('Scraping error:', err);
+  } finally {
+    if (browser) await browser.close();
   }
 }
 
-// Run scrape at startup and every 30 min
-scrapeG2G();
-cron.schedule('*/30 * * * *', scrapeG2G);
+// Initialize scraping
+const init = async () => {
+  console.log('Starting initial scrape...');
+  await scrapeG2G();
+  
+  // Schedule every 30 minutes
+  cron.schedule('*/30 * * * *', () => {
+    console.log('Running scheduled scrape...');
+    scrapeG2G();
+  });
+};
 
-// ROUTES
+init();
+
+// API Endpoints
+app.get('/api/prices', (req, res) => {
+  if (euServerData.length === 0) {
+    return res.json({
+      status: 'pending',
+      message: 'No data available yet',
+      tip: 'Initial scrape takes about 10-15 seconds after server start',
+      lastScrapeTime: lastScrapeTime?.toISOString() || null
+    });
+  }
+  res.json({
+    status: 'success',
+    count: euServerData.length,
+    lastScrapeTime: lastScrapeTime.toISOString(),
+    data: euServerData
+  });
+});
+
+app.get('/api/scrape', async (req, res) => {
+  try {
+    await scrapeG2G();
+    if (euServerData.length === 0) {
+      return res.json({
+        status: 'error',
+        serverCount: 0,
+        lastScrapeTime: lastScrapeTime.toISOString(),
+        message: 'Scrape completed but no data found'
+      });
+    }
+    res.json({
+      status: 'success',
+      serverCount: euServerData.length,
+      lastScrapeTime: lastScrapeTime.toISOString(),
+      data: euServerData
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      message: err.message
+    });
+  }
+});
+
 app.get('/', (req, res) => {
   res.send(`
     <h1>Lost Ark Gold Tracker API</h1>
     <p>✅ Backend is running</p>
     <p>Last scrape: ${lastScrapeTime || 'Never'}</p>
     <p>Servers scraped: ${euServerData.length}</p>
-    <p>Endpoints:</p>
+    <h3>Endpoints:</h3>
     <ul>
       <li><a href="/api/prices">/api/prices</a> - Gold prices</li>
       <li><a href="/api/scrape">/api/scrape</a> - Trigger manual scrape</li>
@@ -107,27 +184,5 @@ app.get('/', (req, res) => {
   `);
 });
 
-app.get('/api/prices', (req, res) => {
-  if (euServerData.length === 0) {
-    return res.status(503).json({ 
-      error: 'No server data available yet. Try again later or hit /api/scrape.',
-      tip: 'Initial scrape takes about 10-15 seconds after server start',
-      lastScrapeTime
-    });
-  }
-  res.json(euServerData);
-});
-
-app.get('/api/scrape', async (req, res) => {
-  await scrapeG2G();
-  res.json({
-    status: euServerData.length ? 'success' : 'error',
-    serverCount: euServerData.length,
-    lastScrapeTime,
-    data: euServerData.length ? euServerData : null,
-    message: euServerData.length ? '' : 'Scrape completed but no data found'
-  });
-});
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
