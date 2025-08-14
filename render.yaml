@@ -1,29 +1,18 @@
-# render.yaml
 services:
   - type: web
     name: lost-ark-backend
     runtime: node
-    buildCommand: npm install
-    startCommand: node server.js
     env: node
     plan: free
+    buildCommand: |
+      apt-get update && apt-get install -y chromium && npm install
+    startCommand: node server.js
+    envVars:
+      - key: CHROMIUM_PATH
+        value: /usr/bin/chromium
 
   - type: static
     name: lost-ark-frontend
+    plan: free
     buildCommand: npm install && npm run build
     staticPublishPath: ./build
-    plan: free# render.yaml
-services:
-  - type: web
-    name: lost-ark-backend
-    runtime: node
-    buildCommand: npm install
-    startCommand: node server.js
-    env: node
-    plan: free
-
-  - type: static
-    name: lost-ark-frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./build
-    plan: free
