@@ -4,12 +4,8 @@ services:
     runtime: node
     env: node
     plan: free
-    buildCommand: |
-      apt-get update && apt-get install -y chromium && npm install
+    buildCommand: npm install
     startCommand: node server.js
-    envVars:
-      - key: CHROMIUM_PATH
-        value: /usr/bin/chromium
 
   - type: static
     name: lost-ark-frontend
