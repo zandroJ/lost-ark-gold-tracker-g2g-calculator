@@ -1,0 +1,29 @@
+# render.yaml
+services:
+  - type: web
+    name: lost-ark-backend
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    env: node
+    plan: free
+
+  - type: static
+    name: lost-ark-frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./build
+    plan: free# render.yaml
+services:
+  - type: web
+    name: lost-ark-backend
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    env: node
+    plan: free
+
+  - type: static
+    name: lost-ark-frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./build
+    plan: free
