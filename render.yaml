@@ -5,16 +5,9 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: node server.js
-    envVars:
-      - key: RENDER
-        value: "true"
-      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
-        value: "true"
-      - key: PUPPETEER_EXECUTABLE_PATH
-        value: "/usr/bin/chromium-browser"
 
   - type: static
     name: lost-ark-frontend
     plan: free
-    buildCommand: npm run build
-    staticPublishPath: ./client/build
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./build
