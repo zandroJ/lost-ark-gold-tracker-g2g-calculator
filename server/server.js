@@ -1,8 +1,7 @@
 // server.js
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios');
-const cheerio = require('cheerio');
+const puppeteer = require('puppeteer');
 const cron = require('node-cron');
 
 const app = express();
@@ -10,120 +9,190 @@ app.use(cors());
 
 let euServerData = [];
 
+// Configure Chromium path for Render.com
+const isRender = process.env.RENDER;
+const chromePath = isRender 
+  ? '/usr/bin/chromium-browser' 
+  : puppeteer.executablePath();
+
+// Auto-scroll helper
+async function autoScroll(page) {
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      let total = 0;
+      const distance = 400;
+      const timer = setInterval(() => {
+        const scrollHeight = document.body.scrollHeight;
+        window.scrollBy(0, distance);
+        total += distance;
+        if (total >= scrollHeight - window.innerHeight) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 250);
+    });
+  });
+}
+
 // Main scrape function
 async function scrapeG2G() {
+  let browser;
   try {
     console.log("🚀 Starting G2G scrape...");
     
-    // Fetch the page with proper headers
-    const response = await axios.get('https://www.g2g.com/categories/lost-ark-gold', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Cache-Control': 'max-age=0',
-        'Upgrade-Insecure-Requests': '1',
-        'Referer': 'https://www.g2g.com/'
-      }
+    browser = await puppeteer.launch({
+      headless: true,
+      executablePath: chromePath,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process'
+      ]
     });
 
-    const $ = cheerio.load(response.data);
-    const serverMap = new Map();
-
-    console.log(`📄 Page loaded with ${response.data.length} characters`);
+    const page = await browser.newPage();
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
+    );
+    await page.setExtraHTTPHeaders({ 
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br'
+    });
     
-    // Process each offer card
-    $('div[data-v-1c4d3f28]').each((i, element) => {
-      const card = $(element);
-      
-      // Extract server name - using multiple selectors
-      let server = card.find('.offer-seller a').text().trim() || 
-                  card.find('.text-body1.ellipsis-2-lines').text().trim() || 
-                  card.find('.text-h6').text().trim() ||
-                  card.find('.seller-name').text().trim() ||
-                  card.find('.offer-title').text().trim();
-      
-      // Extract price
-      let priceText = card.find('.offer-price-amount').text().trim() || 
-                     card.find('.price').text().trim() || 
-                     card.find('.amount').text().trim();
-      
-      // Extract the numeric value from price text
-      const priceMatch = priceText.match(/[\d.]+/);
-      const price = priceMatch ? parseFloat(priceMatch[0]) : 0;
-      
-      // Extract offers count
-      let offersText = card.find('.offer-stock').text().trim() || 
-                      card.find('.stock').text().trim() || 
-                      card.find('.available').text().trim();
-      
-      const offersMatch = offersText.match(/\d+/);
-      const offers = offersMatch ? parseInt(offersMatch[0], 10) : 0;
-      
-      // Only process EU Central servers
-      if (server && /EU Central/i.test(server)) {
-        server = server.replace(/\s+/g, ' ').replace(/\s-\sEU Central/i, '').trim();
-        
-        // Deduplicate by server name
-        if (!serverMap.has(server)) {
-          serverMap.set(server, {
+    // Set viewport to desktop size
+    await page.setViewport({ width: 1280, height: 900 });
+
+    console.log('🌐 Navigating to G2G...');
+    await page.goto('https://www.g2g.com/categories/lost-ark-gold', {
+      waitUntil: 'networkidle2',
+      timeout: 60000
+    });
+
+    // Wait for cards container
+    console.log('⏳ Waiting for content to load...');
+    await page.waitForSelector('div.q-pa-md', { timeout: 45000 });
+
+    // Scroll to load lazy-loaded content
+    console.log('🖱️ Scrolling to load more content...');
+    await autoScroll(page);
+
+    // Wait for price elements
+    console.log('💲 Waiting for price elements...');
+    await page.waitForFunction(
+      () => Array.from(document.querySelectorAll('span')).some(s => /\bUSD\b/i.test(s.textContent)),
+      { timeout: 30000 }
+    );
+
+    // Add extra delay to ensure content is fully rendered
+    await new Promise(r => setTimeout(r, 2000));
+
+    console.log('🔍 Extracting server data...');
+    const raw = await page.evaluate(() => {
+      const usdSpans = Array.from(document.querySelectorAll('span')).filter(s => /\bUSD\b/i.test(s.textContent));
+      const map = new Map();
+
+      usdSpans.forEach(usdSpan => {
+        const card = usdSpan.closest('div.q-pa-md') || usdSpan.closest('.col-sm-6') || usdSpan.closest('a');
+        if (!card) return;
+
+        let price = 0;
+        if (usdSpan.previousElementSibling && /[0-9]+\.[0-9]+/.test(usdSpan.previousElementSibling.textContent)) {
+          const cleaned = usdSpan.previousElementSibling.textContent.replace(/[^\d.,]/g, '').replace(',', '.');
+          price = parseFloat(cleaned) || 0;
+        } else {
+          const candidate = Array.from(card.querySelectorAll('span')).find(s => /[0-9]+\.[0-9]+/.test(s.textContent));
+          if (candidate) {
+            const m = candidate.textContent.match(/[0-9]+(?:\.[0-9]+)?/);
+            if (m) price = parseFloat(m[0].replace(',', '.')) || 0;
+          } else {
+            const m = card.innerText.match(/from\s*([0-9.,]+)/i);
+            if (m) price = parseFloat(m[1].replace(',', '.')) || 0;
+          }
+        }
+
+        let offers = 0;
+        const offersEl = card.querySelector('.g-chip-counter');
+        if (offersEl) {
+          const n = offersEl.textContent.replace(/\D/g, '');
+          offers = n ? parseInt(n, 10) : 0;
+        } else {
+          const m = card.innerText.match(/(\d+)\s+offers?/i);
+          offers = m ? parseInt(m[1], 10) : 0;
+        }
+
+        let server = '';
+        const trySelectors = [
+          '.text-body1.ellipsis-2-lines span',
+          '.text-body1.ellipsis-2-lines',
+          '.text-h6',
+          'h3',
+          'span'
+        ];
+        for (const sel of trySelectors) {
+          const el = card.querySelector(sel);
+          if (el && el.textContent.trim()) {
+            const txt = el.textContent.trim();
+            if (txt.includes(' - ')) {
+              server = txt;
+              break;
+            } else if (!server) {
+              server = txt;
+            }
+          }
+        }
+
+        if (!/ - /i.test(server)) {
+          const spanWithDash = Array.from(card.querySelectorAll('span')).find(s => / - /.test(s.textContent));
+          if (spanWithDash) server = spanWithDash.textContent.trim();
+        }
+
+        if (!server || server.length > 80) {
+          const m = card.innerText.match(/(.{1,60}?\s-\s(?:EU Central|US East|US West|EU|[^\n]+))/i);
+          if (m) server = m[0].trim();
+        }
+
+        if (!server) {
+          server = card.innerText.split('\n').map(s => s.trim()).find(s => s.length > 0) || '';
+        }
+
+        if (!map.has(server)) {
+          map.set(server, {
             server,
             offers,
             priceUSD: price,
             valuePer100k: price ? (100000 * price).toFixed(6) : '0.000000'
           });
         }
-      }
+      });
+
+      return Array.from(map.values());
     });
 
-    // Alternative approach if no cards found
-    if (serverMap.size === 0) {
-      console.log("⚠️ No cards found, trying alternative approach");
-      
-      // Look for server names in the page
-      $('div').each((i, element) => {
-        const text = $(element).text();
-        if (/EU Central/i.test(text) && /USD/i.test(text)) {
-          const serverMatch = text.match(/([A-Za-z]+)\s+-\s+EU Central/i);
-          const priceMatch = text.match(/USD\s*([\d.]+)/i);
-          const offersMatch = text.match(/(\d+)\s+offers/i);
-          
-          if (serverMatch && priceMatch) {
-            const server = serverMatch[1].trim();
-            const price = parseFloat(priceMatch[1]);
-            const offers = offersMatch ? parseInt(offersMatch[1], 10) : 0;
-            
-            if (!serverMap.has(server)) {
-              serverMap.set(server, {
-                server,
-                offers,
-                priceUSD: price,
-                valuePer100k: price ? (100000 * price).toFixed(6) : '0.000000'
-              });
-            }
-          }
-        }
-      });
-    }
-
-    euServerData = Array.from(serverMap.values())
-      .sort((a, b) => a.priceUSD - b.priceUSD);
-    
+    // Filter EU Central servers
+    euServerData = raw.filter(r => /EU Central/i.test(r.server));
     console.log(`✅ Scraped ${euServerData.length} EU Central servers`);
     
-    // Log the first server if available for debugging
     if (euServerData.length > 0) {
       console.log(`📊 Sample server: ${euServerData[0].server} - $${euServerData[0].priceUSD}`);
+    } else {
+      console.log('⚠️ No EU Central servers found in the data');
     }
+
   } catch (err) {
     console.error('❌ Scraping error:', err.message);
-    console.error('❌ Error details:', err.response ? {
-      status: err.response.status,
-      headers: err.response.headers,
-      data: err.response.data.substring(0, 500) // First 500 characters
-    } : 'No response details');
+    if (err.response) {
+      console.error('Error response:', {
+        status: err.response.status,
+        headers: err.response.headers
+      });
+    }
+  } finally {
+    if (browser) {
+      console.log('🛑 Closing browser instance...');
+      await browser.close();
+    }
   }
 }
 
@@ -140,7 +209,7 @@ app.get('/api/prices', (req, res) => {
   if (euServerData.length === 0) {
     return res.status(503).json({ 
       error: 'No server data available yet. Try again later or hit /api/scrape.',
-      tip: 'Initial scrape takes about 10-15 seconds after server start'
+      tip: 'Initial scrape takes about 30-60 seconds after server start'
     });
   }
   res.json(euServerData);
@@ -159,4 +228,4 @@ app.get('/api/scrape', async (req, res) => {
 app.get('/test', (req, res) => res.send('Server running'));
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

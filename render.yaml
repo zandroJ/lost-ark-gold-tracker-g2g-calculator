@@ -4,8 +4,16 @@ services:
     runtime: node
     env: node
     plan: free
-    buildCommand: npm install
+    buildCommand: |
+      apt-get update && apt-get install -y chromium && npm install
     startCommand: node server.js
+    envVars:
+      - key: RENDER
+        value: "true"
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "true"
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: "/usr/bin/chromium-browser"
 
   - type: static
     name: lost-ark-frontend
