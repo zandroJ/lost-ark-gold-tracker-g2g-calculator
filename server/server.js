@@ -9,7 +9,7 @@ app.use(cors());
 let euServerData = [];
 let lastScrapeTime = null;
 
-// Railway-optimized browser launch
+// Railway-compatible browser launch
 async function launchBrowser() {
   return puppeteer.launch({
     headless: true,
@@ -31,7 +31,7 @@ async function autoScroll(page) {
         const scrollHeight = document.body.scrollHeight;
         window.scrollBy(0, distance);
         totalHeight += distance;
-        if (totalHeight >= scrollHeight) {
+        if (totalHeight >= scrollHeight - window.innerHeight) {
           clearInterval(timer);
           resolve();
         }
@@ -46,22 +46,21 @@ async function scrapeG2G() {
     browser = await launchBrowser();
     const page = await browser.newPage();
     
-    // Configure browser settings
+    // Configure browser
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36');
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
     await page.setViewport({ width: 1280, height: 900 });
 
-    // Navigate with robust timeout handling
     console.log('Navigating to G2G...');
     await page.goto('https://www.g2g.com/categories/lost-ark-gold', {
       waitUntil: 'networkidle2',
       timeout: 60000
     });
 
-    // Wait for content to load
+    // Wait for content
     await page.waitForSelector('div.q-pa-md', { timeout: 30000 });
     await autoScroll(page);
-    await page.waitForTimeout(1000); // Extra safety delay
+    await page.waitForTimeout(1000); // Safety delay
 
     // Extract data
     const scrapedData = await page.evaluate(() => {
@@ -69,30 +68,43 @@ async function scrapeG2G() {
       const cards = document.querySelectorAll('div.q-pa-md');
       
       cards.forEach(card => {
-        // Find server name
-        const serverEl = card.querySelector('.text-body1, .text-h6, h3');
-        if (!serverEl) return;
-        const server = serverEl.textContent.trim();
-        
-        // Find USD price
-        const usdSpan = Array.from(card.querySelectorAll('span'))
-          .find(el => el.textContent.includes('USD') && el.previousElementSibling);
-        
-        if (!usdSpan) return;
-        const priceText = usdSpan.previousElementSibling.textContent.replace(/[^\d.]/g, '');
-        const price = parseFloat(priceText);
-        if (isNaN(price)) return;
-        
-        // Find offer count
-        const offersEl = card.querySelector('.g-chip-counter');
-        const offers = offersEl ? parseInt(offersEl.textContent.replace(/\D/g, '')) || 0 : 0;
-        
-        results.push({
-          server,
-          offers,
-          priceUSD: price,
-          valuePer100k: (100000 * price).toFixed(6)
-        });
+        try {
+          // Find server name
+          const serverEl = card.querySelector('.text-body1') || 
+                           card.querySelector('.text-h6') || 
+                           card.querySelector('h3');
+          if (!serverEl) return;
+          const server = serverEl.textContent.trim();
+          
+          // Find USD price
+          let price = 0;
+          const usdSpans = Array.from(card.querySelectorAll('span'))
+            .filter(el => el.textContent.includes('USD'));
+          
+          if (usdSpans.length > 0) {
+            const priceEl = usdSpans[0].previousElementSibling;
+            if (priceEl) {
+              const priceText = priceEl.textContent.replace(/[^\d.]/g, '');
+              price = parseFloat(priceText) || 0;
+            }
+          }
+          
+          // Find offer count
+          let offers = 0;
+          const offersEl = card.querySelector('.g-chip-counter');
+          if (offersEl) {
+            offers = parseInt(offersEl.textContent.replace(/\D/g, '')) || 0;
+          }
+          
+          results.push({
+            server,
+            offers,
+            priceUSD: price,
+            valuePer100k: (100000 * price).toFixed(6)
+          });
+        } catch (e) {
+          console.error('Error processing card:', e);
+        }
       });
       
       return results;
@@ -100,7 +112,7 @@ async function scrapeG2G() {
 
     // Filter EU servers
     euServerData = scrapedData.filter(item => 
-      /EU Central/i.test(item.server)
+      item.server && /EU Central/i.test(item.server)
     );
     
     lastScrapeTime = new Date();
