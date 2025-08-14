@@ -13,7 +13,6 @@ const chromePath = isRender
   : puppeteer.executablePath();
 
 let euServerData = [];
-let isScraping = false;
 
 async function autoScroll(page) {
   await page.evaluate(async () => {
@@ -35,18 +34,11 @@ async function autoScroll(page) {
 }
 
 async function scrapeG2G() {
-  if (isScraping) {
-    console.log('⚠️ Scrape already in progress. Skipping...');
-    return;
-  }
-  
-  isScraping = true;
   let browser;
   
   try {
     console.log("🚀 Starting G2G scrape...");
     
-    // Launch browser with optimized configuration
     browser = await puppeteer.launch({
       headless: true,
       executablePath: chromePath,
@@ -54,19 +46,15 @@ async function scrapeG2G() {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-gpu',
         '--single-process'
       ],
       timeout: 60000
     });
 
     const page = await browser.newPage();
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
-    );
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36');
     await page.setExtraHTTPHeaders({ 
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept-Encoding': 'gzip, deflate, br'
+      'Accept-Language': 'en-US,en;q=0.9'
     });
     
     // Set viewport to desktop size
@@ -78,41 +66,56 @@ async function scrapeG2G() {
       timeout: 45000
     });
 
-    // Wait for cards container with more tolerance
-    console.log('⏳ Waiting for content to load...');
-    await page.waitForSelector('div.q-pa-md', { timeout: 45000 }).catch(() => {
-      console.log('⚠️ div.q-pa-md not found, continuing anyway');
-    });
-
-    // Scroll to load lazy-loaded content
-    console.log('🖱️ Scrolling to load more content...');
-    await autoScroll(page);
-
     // Add extra delay to ensure content is fully rendered
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 5000));
 
     console.log('🔍 Extracting server data...');
     const raw = await page.evaluate(() => {
-      const usdSpans = Array.from(document.querySelectorAll('span')).filter(s => 
-        /\bUSD\b/i.test(s.textContent)
-      );
+      const cards = Array.from(document.querySelectorAll('.offer-list-item'));
       const map = new Map();
 
-      usdSpans.forEach(usdSpan => {
-        const card = usdSpan.closest('div.q-pa-md') || 
-                     usdSpan.closest('.col-sm-6') || 
-                     usdSpan.closest('a') ||
-                     usdSpan.closest('.offer-list-item');
-        if (!card) return;
-
-        // ... rest of your extraction logic remains the same ...
+      cards.forEach(card => {
+        // Find server name
+        let server = card.querySelector('.offer-seller')?.textContent?.trim() || 
+                     card.querySelector('.offer-title')?.textContent?.trim() || 
+                     '';
+        
+        // Find price
+        const priceElement = card.querySelector('.offer-price-amount');
+        let price = 0;
+        if (priceElement) {
+          const priceText = priceElement.textContent.trim();
+          const priceMatch = priceText.match(/[\d.]+/);
+          price = priceMatch ? parseFloat(priceMatch[0]) : 0;
+        }
+        
+        // Find offers count
+        const offersElement = card.querySelector('.offer-stock');
+        let offers = 0;
+        if (offersElement) {
+          const offersText = offersElement.textContent.trim();
+          const offersMatch = offersText.match(/\d+/);
+          offers = offersMatch ? parseInt(offersMatch[0], 10) : 0;
+        }
+        
+        if (server && /EU Central/i.test(server)) {
+          // Deduplicate by server name
+          if (!map.has(server)) {
+            map.set(server, {
+              server,
+              offers,
+              priceUSD: price,
+              valuePer100k: price ? (100000 * price).toFixed(6) : '0.000000'
+            });
+          }
+        }
       });
 
       return Array.from(map.values());
     });
 
     // Filter EU Central servers
-    euServerData = raw.filter(r => /EU Central/i.test(r.server));
+    euServerData = raw.filter(r => r.server && /EU Central/i.test(r.server));
     console.log(`✅ Scraped ${euServerData.length} EU Central servers`);
     
     if (euServerData.length > 0) {
@@ -126,11 +129,12 @@ async function scrapeG2G() {
   } finally {
     if (browser) {
       console.log('🛑 Closing browser instance...');
-      await browser.close().catch(err => 
-        console.error('Error closing browser:', err.message)
-      );
+      try {
+        await browser.close();
+      } catch (e) {
+        console.error('Error closing browser:', e.message);
+      }
     }
-    isScraping = false;
   }
 }
 
@@ -152,18 +156,6 @@ app.get('/api/prices', (req, res) => {
   }
   res.json(euServerData);
 });
-
-app.get('/api/scrape', async (req, res) => {
-  await scrapeG2G();
-  res.json({
-    status: euServerData.length ? 'success' : 'error',
-    serverCount: euServerData.length,
-    data: euServerData.length ? euServerData : null,
-    message: euServerData.length ? '' : 'Scrape completed but no data found'
-  });
-});
-
-app.get('/test', (req, res) => res.send('Server running'));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

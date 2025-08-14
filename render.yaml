@@ -3,9 +3,7 @@ services:
     name: lost-ark-backend
     runtime: node
     plan: free
-    buildCommand: |
-      echo "Skipping Chromium install - using system package"
-      npm install
+    buildCommand: npm install
     startCommand: node server.js
     envVars:
       - key: RENDER
@@ -18,5 +16,5 @@ services:
   - type: static
     name: lost-ark-frontend
     plan: free
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./build
+    buildCommand: npm run build
+    staticPublishPath: ./client/build
