@@ -15,6 +15,14 @@ const GoldTracker = () => {
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   };
 
+  // Helper: safely parse a price-like value to a Number
+  const parsePrice = (v) => {
+    if (v === null || v === undefined) return NaN;
+    if (typeof v === 'number') return v;
+    const cleaned = String(v).replace(/[^\d.,-]/g, '').replace(',', '.');
+    return parseFloat(cleaned);
+  };
+
   // Handle gold input with commas
   const handleGoldChange = (e) => {
     const value = e.target.value.replace(/,/g, '');
@@ -30,20 +38,27 @@ const GoldTracker = () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await axios.get('https://your-backend-url.onrender.com/api/prices');
+        const response = await axios.get('https://lost-ark-gold-tracker-g2g-calculator.onrender.com/api/prices');
         if (!mounted) return;
 
         // Ensure it's an array
         const data = Array.isArray(response.data) ? response.data : [];
 
         // Normalize and sort by numeric price
-        const normalized = data.map(d => ({
-          server: d.server || '',
-          offers: Number.isFinite(Number(d.offers)) ? Number(d.offers) : 0,
-          priceUSD: Number.isFinite(Number(d.priceUSD)) ? Number(d.priceUSD) : 0
-        }));
+        const normalized = data.map(d => {
+          const price = parsePrice(d.priceUSD);
+          return {
+            server: d.server || '',
+            offers: Number.isFinite(Number(d.offers)) ? Number(d.offers) : 0,
+            priceUSD: Number.isFinite(price) ? price : 0
+          };
+        });
 
-        normalized.sort((a, b) => a.priceUSD - b.priceUSD);
+        normalized.sort((a, b) => {
+          const pa = a.priceUSD > 0 ? a.priceUSD : Number.POSITIVE_INFINITY;
+          const pb = b.priceUSD > 0 ? b.priceUSD : Number.POSITIVE_INFINITY;
+          return pa - pb;
+        });
 
         setServers(normalized);
 
@@ -52,7 +67,7 @@ const GoldTracker = () => {
         setSelectedServer(firstValid || normalized[0] || null);
       } catch (err) {
         console.error('Error fetching data:', err);
-        setError('Could not fetch server prices. The backend might be initializing.');
+        setError('Could not fetch server prices.');
       } finally {
         setLoading(false);
       }
@@ -111,7 +126,7 @@ const GoldTracker = () => {
                 type="text"
                 value={displayGold}
                 onChange={handleGoldChange}
-                placeholder="Enter gold amount"
+                style={{ padding: 12, fontSize: 16 }}
               />
               <div className="input-decoration"></div>
             </div>
@@ -120,14 +135,9 @@ const GoldTracker = () => {
 
         <div className="server-selection">
           <h2>Select Server</h2>
-          {loading && <div className="loading-indicator">Loading servers...</div>}
+          {loading && <div className="loading-indicator">Loading servers…</div>}
           {error && <div className="error-message">{error}</div>}
-          {!loading && servers.length === 0 && (
-            <div className="no-servers">
-              <p>No servers found. The backend might still be initializing.</p>
-              <p>Please try again in a few minutes.</p>
-            </div>
-          )}
+          {!loading && servers.length === 0 && <div>No servers found.</div>}
 
           {!loading && servers.length > 0 && (
             <div className="servers-grid">
@@ -140,7 +150,7 @@ const GoldTracker = () => {
                     className={`server-card ${isActive ? 'active' : ''}`}
                   >
                     <div className="card-header">
-                      <div className="server-name">{server.server}</div>
+                      <div className="server-name">{server.server.split('-')[0].trim()}</div>
                       <div className={`server-status ${isActive ? 'active' : ''}`}>
                         {isActive ? 'SELECTED' : 'AVAILABLE'}
                       </div>
@@ -200,6 +210,10 @@ const GoldTracker = () => {
           </div>
         </div>
       </div>
+      
+      {/* <div className="app-footer">
+        <p>Enjoy! And if you desire, make a donation to support me to continue updating this project.</p>
+      </div> */}
     </div>
   );
 };
