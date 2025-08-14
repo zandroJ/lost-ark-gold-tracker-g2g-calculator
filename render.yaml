@@ -2,10 +2,10 @@ services:
   - type: web
     name: lost-ark-backend
     runtime: node
-    env: node
     plan: free
     buildCommand: |
-      apt-get update && apt-get install -y chromium && npm install
+      echo "Skipping Chromium install - using system package"
+      npm install
     startCommand: node server.js
     envVars:
       - key: RENDER
