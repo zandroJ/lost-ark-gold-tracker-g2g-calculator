@@ -3,10 +3,11 @@ services:
   - type: web
     name: lost-ark-backend
     runtime: node
+    plan: free
     buildCommand: npm install
     startCommand: node server.js
     env: node
-    plan: free
+
 
   - type: static
     name: lost-ark-frontend
