@@ -13,6 +13,18 @@ RUN npm install
 # Copy application code
 COPY . .
 
+# Install Chromium dependencies
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
+
+# Set Puppeteer config
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 # Expose port
 EXPOSE 3000
 
