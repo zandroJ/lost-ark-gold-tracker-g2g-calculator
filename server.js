@@ -1,8 +1,9 @@
 const express = require('express');
 const cors = require('cors');
-const fetch = require('node-fetch'); // Replaced axios with node-fetch
+const https = require('https'); // Using Node's native https module
 const cheerio = require('cheerio');
 const cron = require('node-cron');
+const { URL } = require('url');
 
 const app = express();
 app.use(cors());
@@ -15,63 +16,102 @@ let euServerData = [];
 let lastError = null;
 
 async function scrapeG2G() {
-  try {
-    console.log('🚀 Starting G2G scrape via ScraperAPI...');
-    
-    // Build URL with query parameters
-    const params = new URLSearchParams({
-      api_key: SCRAPER_API_KEY,
-      url: 'https://www.g2g.com/categories/lost-ark-gold?q=eu',
-      render: 'true',
-      timeout: '60000'
-    });
-    
-    const url = `${SCRAPER_API_URL}?${params.toString()}`;
-    const response = await fetch(url, { timeout: 90000 });
-
-    if (!response.ok) {
-      throw new Error(`ScraperAPI returned status ${response.status}`);
-    }
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    const results = [];
-
-    // Find all offer cards
-    $('.sell-offer-card, div.q-pa-md').each((i, card) => {
-      const text = $(card).text();
+  return new Promise((resolve) => {
+    try {
+      console.log('🚀 Starting G2G scrape via ScraperAPI...');
       
-      // Extract price
-      const priceMatch = text.match(/(\d+\.\d+)\s*USD/i);
-      const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+      // Build URL with query parameters
+      const params = new URLSearchParams({
+        api_key: SCRAPER_API_KEY,
+        url: 'https://www.g2g.com/categories/lost-ark-gold?q=eu',
+        render: 'true',
+        timeout: '60000'
+      });
       
-      // Extract offers count
-      const offersMatch = text.match(/(\d+)\s+offers?/i);
-      const offers = offersMatch ? parseInt(offersMatch[1], 10) : 0;
+      const url = new URL(`${SCRAPER_API_URL}?${params.toString()}`);
       
-      // Extract server name
-      const serverMatch = text.match(/(.+?)\s*-\s*EU Central/i);
-      const server = serverMatch ? serverMatch[0].trim() : '';
+      const options = {
+        hostname: url.hostname,
+        path: `${url.pathname}${url.search}`,
+        method: 'GET',
+        timeout: 90000
+      };
 
-      if (server && price > 0) {
-        results.push({
-          server,
-          offers,
-          priceUSD: price,
-          valuePer100k: (100000 * price).toFixed(6)
+      const req = https.request(options, (response) => {
+        let html = '';
+        
+        response.on('data', (chunk) => {
+          html += chunk;
         });
-      }
-    });
 
-    // Filter for EU Central servers
-    euServerData = results.filter(r => /EU Central/i.test(r.server));
-    console.log(`✅ Scraped ${euServerData.length} EU servers`);
-    lastError = null;
+        response.on('end', () => {
+          try {
+            if (response.statusCode !== 200) {
+              throw new Error(`ScraperAPI returned status ${response.statusCode}`);
+            }
 
-  } catch (err) {
-    console.error('❌ Scraping error:', err.message);
-    lastError = err.message;
-  }
+            const $ = cheerio.load(html);
+            const results = [];
+
+            // Find all offer cards
+            $('.sell-offer-card, div.q-pa-md').each((i, card) => {
+              const text = $(card).text();
+              
+              // Extract price
+              const priceMatch = text.match(/(\d+\.\d+)\s*USD/i);
+              const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+              
+              // Extract offers count
+              const offersMatch = text.match(/(\d+)\s+offers?/i);
+              const offers = offersMatch ? parseInt(offersMatch[1], 10) : 0;
+              
+              // Extract server name
+              const serverMatch = text.match(/(.+?)\s*-\s*EU Central/i);
+              const server = serverMatch ? serverMatch[0].trim() : '';
+
+              if (server && price > 0) {
+                results.push({
+                  server,
+                  offers,
+                  priceUSD: price,
+                  valuePer100k: (100000 * price).toFixed(6)
+                });
+              }
+            });
+
+            // Filter for EU Central servers
+            euServerData = results.filter(r => /EU Central/i.test(r.server));
+            console.log(`✅ Scraped ${euServerData.length} EU servers`);
+            lastError = null;
+            resolve();
+          } catch (err) {
+            console.error('❌ Parsing error:', err.message);
+            lastError = err.message;
+            resolve();
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        console.error('❌ Request error:', err.message);
+        lastError = err.message;
+        resolve();
+      });
+
+      req.on('timeout', () => {
+        console.error('❌ Request timed out');
+        lastError = 'Request timed out';
+        req.destroy();
+        resolve();
+      });
+
+      req.end();
+    } catch (err) {
+      console.error('❌ Setup error:', err.message);
+      lastError = err.message;
+      resolve();
+    }
+  });
 }
 
 // Routes
