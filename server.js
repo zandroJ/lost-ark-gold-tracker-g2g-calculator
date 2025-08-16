@@ -51,33 +51,40 @@ async function scrapeG2G() {
             }
 
             const $ = cheerio.load(html);
-            const results = [];
+const results = [];
 
-            // Find all offer cards
-            $('.sell-offer-card, div.q-pa-md').each((i, card) => {
-              const text = $(card).text();
-              
-              // Extract price
-              const priceMatch = text.match(/(\d+\.\d+)\s*USD/i);
-              const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
-              
-              // Extract offers count
-              const offersMatch = text.match(/(\d+)\s+offers?/i);
-              const offers = offersMatch ? parseInt(offersMatch[1], 10) : 0;
-              
-              // Extract server name
-              const serverMatch = text.match(/(.+?)\s*-\s*EU Central/i);
-              const server = serverMatch ? serverMatch[0].trim() : '';
+// Find all offer-related elements
+$('*').each((i, el) => {
+  const cls = $(el).attr('class');
+  const text = $(el).text(); // ✅ Get element text
 
-              if (server && price > 0) {
-                results.push({
-                  server,
-                  offers,
-                  priceUSD: price,
-                  valuePer100k: (100000 * price).toFixed(6)
-                });
-              }
-            });
+  if (cls && cls.toLowerCase().includes('offer')) {
+    console.log('Found class:', cls);
+    console.log('Element text snippet:', text.slice(0, 100));
+
+    // Extract price
+    const priceMatch = text.match(/(\d+(?:\.\d+)?)\s*USD/i);
+    const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+
+    // Extract offers count
+    const offersMatch = text.match(/(\d+)\s+offers?/i);
+    const offers = offersMatch ? parseInt(offersMatch[1], 10) : 0;
+
+    // Extract server name
+    const serverMatch = text.match(/(.+?)\s*-\s*EU Central/i);
+    const server = serverMatch ? serverMatch[0].trim() : '';
+
+    if (server && price > 0) {
+      results.push({
+        server,
+        offers,
+        priceUSD: price,
+        valuePer100k: (100000 * price).toFixed(6),
+      });
+    }
+  }
+});
+
 
             // Filter for EU Central servers
             euServerData = results.filter(r => /EU Central/i.test(r.server));
