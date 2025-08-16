@@ -1,7 +1,7 @@
 {
   "name": "lost-ark-backend",
   "version": "1.0.0",
-  "main": "server/server.js",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "postinstall": "apt-get update && apt-get install -y chromium"
