@@ -36,8 +36,14 @@ async function scrapeG2G() {
   let browser;
   try {
     console.log('🚀 Starting Puppeteer on Railway...');
+    
+    // Use Chromium path from environment or default
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
+    console.log(`Using Chromium at: ${executablePath}`);
+    
     browser = await puppeteer.launch({
       headless: true,
+      executablePath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -45,7 +51,6 @@ async function scrapeG2G() {
         '--disable-gpu',
         '--single-process'
       ],
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       ignoreHTTPSErrors: true
     });
 
@@ -61,10 +66,9 @@ async function scrapeG2G() {
 
     console.log('Navigating to G2G...');
     
-    // Try with timeout and networkidle2 instead of networkidle0
     await page.goto('https://www.g2g.com/categories/lost-ark-gold?q=eu', {
-      waitUntil: 'networkidle2',
-      timeout: 90000  // Increased timeout
+      waitUntil: 'domcontentloaded',
+      timeout: 60000
     });
 
     // Debug: save HTML for inspection
@@ -85,6 +89,9 @@ async function scrapeG2G() {
       return;
     }
 
+    // Wait for content to load
+    await wait(5000);
+    
     // Try different selectors with reduced timeout
     try {
       await page.waitForSelector('div.q-pa-md, .sell-offer-card, .offer-list', { 
