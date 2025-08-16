@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios');
+const fetch = require('node-fetch'); // Replaced axios with node-fetch
 const cheerio = require('cheerio');
 const cron = require('node-cron');
 
@@ -18,21 +18,23 @@ async function scrapeG2G() {
   try {
     console.log('🚀 Starting G2G scrape via ScraperAPI...');
     
-    const response = await axios.get(`${SCRAPER_API_URL}`, {
-      params: {
-        api_key: SCRAPER_API_KEY,
-        url: 'https://www.g2g.com/categories/lost-ark-gold?q=eu',
-        render: true,
-        timeout: 60000
-      },
-      timeout: 90000
+    // Build URL with query parameters
+    const params = new URLSearchParams({
+      api_key: SCRAPER_API_KEY,
+      url: 'https://www.g2g.com/categories/lost-ark-gold?q=eu',
+      render: 'true',
+      timeout: '60000'
     });
+    
+    const url = `${SCRAPER_API_URL}?${params.toString()}`;
+    const response = await fetch(url, { timeout: 90000 });
 
-    if (response.status !== 200) {
+    if (!response.ok) {
       throw new Error(`ScraperAPI returned status ${response.status}`);
     }
 
-    const $ = cheerio.load(response.data);
+    const html = await response.text();
+    const $ = cheerio.load(html);
     const results = [];
 
     // Find all offer cards
