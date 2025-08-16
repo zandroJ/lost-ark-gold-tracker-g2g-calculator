@@ -57,16 +57,18 @@ async function scrapeG2G() {
     });
 
     // Wait for cards to load
-    await page.waitForSelector('div.q-pa-md', { timeout: 25000 });
-
+await page.waitForSelector('div.q-pa-md', { timeout: 60000 });
     // Scroll to trigger lazy load
-    await autoScroll(page);
-
+await autoScroll(page);
     // Ensure prices are visible
-    await page.waitForFunction(
-      () => Array.from(document.querySelectorAll('span')).some(s => /\bUSD\b/i.test(s.textContent)),
-      { timeout: 20000 }
-    );
+    try {
+  await page.waitForFunction(
+    () => Array.from(document.querySelectorAll('span')).some(s => /\bUSD\b/i.test(s.textContent)),
+    { timeout: 60000 }   // increased from 20000 → 60000
+  );
+} catch (e) {
+  console.warn('⚠️ USD spans not found in time, continuing anyway...');
+}
 
     // Scrape data inside the browser context
     const raw = await page.evaluate(() => {
