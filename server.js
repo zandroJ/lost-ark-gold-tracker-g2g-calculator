@@ -54,7 +54,7 @@ async function scrapeG2G() {
   waitUntil: "domcontentloaded",
   timeout: 60000
 });
-await page.waitForTimeout(5000); // wait 5s for JS to render
+await page.waitFor(5000); // Works in Puppeteer <5.5.0// wait 5s for JS to render
 console.log("Checking page for USD...");
 const bodyText = await page.evaluate(() => document.body.innerText);
 console.log("Snippet:", bodyText.slice(0, 500));
