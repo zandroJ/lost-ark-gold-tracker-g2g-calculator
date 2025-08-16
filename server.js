@@ -3,8 +3,6 @@ const express = require('express');
 const cors = require('cors');
 const puppeteer = require('puppeteer');
 const cron = require('node-cron');
-const fs = require('fs');
-const path = require('path');
 
 const app = express();
 app.use(cors());
@@ -54,57 +52,69 @@ async function scrapeG2G() {
 
     console.log('🌍 Navigating to G2G...');
     await page.goto('https://www.g2g.com/categories/lost-ark-gold?q=eu', {
-      waitUntil: 'domcontentloaded',
+      waitUntil: 'networkidle2',
       timeout: 60000
     });
 
+    // Wait for cards to load
+    await page.waitForSelector('div.q-pa-md', { timeout: 60000 });
+
     // Scroll to trigger lazy load
     await autoScroll(page);
-    await new Promise(r => setTimeout(r, 5000));
 
-    // Always save debug artifacts
+    // Give sellers extra time
+    await new Promise(r => setTimeout(r, 10000));
+
+    try {
+      await page.waitForFunction(
+        () => Array.from(document.querySelectorAll('span')).some(s => /\bUSD\b/i.test(s.textContent)),
+        { timeout: 60000 }
+      );
+    } catch (e) {
+      console.warn('⚠️ USD spans not found in time, continuing anyway...');
+    }
+
+    // Save debug artifacts ALWAYS
     await page.screenshot({ path: 'debug.png', fullPage: true });
     const html = await page.content();
     fs.writeFileSync('debug.html', html);
 
-    // Scrape cards
+    // Scrape data
     const raw = await page.evaluate(() => {
-      const cards = Array.from(document.querySelectorAll('.card-body, div.q-pa-md, .product-item'));
-      console.log(`Found ${cards.length} cards`);
+      const usdSpans = Array.from(document.querySelectorAll('span')).filter(s => /\bUSD\b/i.test(s.textContent));
+      const map = new Map();
 
-      return cards.map(card => {
+      usdSpans.forEach(usdSpan => {
+        const card = usdSpan.closest('div.q-pa-md') || usdSpan.closest('.col-sm-6') || usdSpan.closest('a');
+        if (!card) return;
+
         let price = 0;
-        let offers = 0;
-        let server = '';
-
-        // price
-        const priceEl = card.querySelector('span:contains("USD")') || Array.from(card.querySelectorAll('span')).find(s => /\bUSD\b/i.test(s.textContent));
-        if (priceEl) {
-          const prev = priceEl.previousElementSibling;
-          if (prev) {
-            const num = prev.textContent.replace(/[^\d.,]/g, '').replace(',', '.');
-            price = parseFloat(num) || 0;
-          }
+        if (usdSpan.previousElementSibling && /[0-9]+\.[0-9]+/.test(usdSpan.previousElementSibling.textContent)) {
+          price = parseFloat(usdSpan.previousElementSibling.textContent.replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
         }
 
-        // offers
+        let offers = 0;
         const offersEl = card.querySelector('.g-chip-counter');
         if (offersEl) {
           const n = offersEl.textContent.replace(/\D/g, '');
           offers = n ? parseInt(n, 10) : 0;
         }
 
-        // server name
+        let server = '';
         const spanWithDash = Array.from(card.querySelectorAll('span')).find(s => / - /.test(s.textContent));
         if (spanWithDash) server = spanWithDash.textContent.trim();
 
-        return {
-          server,
-          offers,
-          priceUSD: price,
-          valuePer100k: price ? (100000 * price).toFixed(6) : '0.000000'
-        };
-      }).filter(r => r.server); // keep only real servers
+        if (!map.has(server)) {
+          map.set(server, {
+            server,
+            offers,
+            priceUSD: price,
+            valuePer100k: price ? (100000 * price).toFixed(6) : '0.000000'
+          });
+        }
+      });
+
+      return Array.from(map.values());
     });
 
     euServerData = raw.filter(r => /EU Central/i.test(r.server));
@@ -116,6 +126,7 @@ async function scrapeG2G() {
     if (browser) await browser.close();
   }
 }
+
 
 // Run immediately + schedule every 30 min
 scrapeG2G();
@@ -131,7 +142,11 @@ app.get('/api/prices', (req, res) => {
 
 app.get('/', (req, res) => res.send('✅ Gold Tracker backend is running'));
 
-// Debug routes
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+const fs = require('fs');
+const path = require('path');
+
 app.get('/debug/screenshot', (req, res) => {
   const filePath = path.join(__dirname, 'debug.png');
   if (fs.existsSync(filePath)) {
@@ -149,6 +164,3 @@ app.get('/debug/html', (req, res) => {
     res.status(404).send('HTML not found');
   }
 });
-
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
