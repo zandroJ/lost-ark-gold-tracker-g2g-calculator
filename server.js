@@ -3,6 +3,7 @@ const cors = require('cors');
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const cron = require('node-cron');
+const fs = require('fs'); // Add this at the top
 
 puppeteer.use(StealthPlugin());
 const app = express();
@@ -31,14 +32,7 @@ async function autoScroll(page) {
     });
   });
 }
-try {
-  console.log('Checking Chromium at /usr/bin/chromium-browser:', 
-    fs.existsSync('/usr/bin/chromium-browser'));
-  console.log('Checking Chromium at /usr/bin/chromium:', 
-    fs.existsSync('/usr/bin/chromium'));
-} catch (e) {
-  console.error('File check error:', e);
-}
+
 async function scrapeG2G() {
   let browser;
   try {
@@ -49,10 +43,49 @@ async function scrapeG2G() {
     console.log(`Using Chromium at: ${executablePath}`);
     
     // Verify the path exists
-    const pathExists = fs.existsSync(executablePath);
-    console.log(`Chromium exists at path: ${pathExists}`);
-    if (!pathExists) {
-      throw new Error(`Chromium not found at ${executablePath}`);
+    try {
+      const exists = fs.existsSync(executablePath);
+      console.log(`Chromium exists: ${exists}`);
+      if (!exists) {
+        console.log('Chromium not found, using default Puppeteer browser');
+        browser = await puppeteer.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--single-process'
+          ],
+          ignoreHTTPSErrors: true
+        });
+      } else {
+        browser = await puppeteer.launch({
+          headless: true,
+          executablePath,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--single-process'
+          ],
+          ignoreHTTPSErrors: true
+        });
+      }
+    } catch (err) {
+      console.log('Error checking Chromium path, using default browser');
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--single-process'
+        ],
+        ignoreHTTPSErrors: true
+      });
     }
 
     const page = await browser.newPage();
