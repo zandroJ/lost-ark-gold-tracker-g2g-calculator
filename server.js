@@ -1,159 +1,134 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
-const https = require('https'); // Using Node's native https module
-const cheerio = require('cheerio');
+const puppeteer = require('puppeteer');
 const cron = require('node-cron');
-const { URL } = require('url');
 
 const app = express();
 app.use(cors());
 
-// Get your API key from scraperapi.com
-const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY;
-const SCRAPER_API_URL = 'https://api.scraperapi.com';
-
 let euServerData = [];
-let lastError = null;
 
-async function scrapeG2G() {
-  return new Promise((resolve) => {
-    try {
-      console.log('🚀 Starting G2G scrape via ScraperAPI...');
-      
-      // Build URL with query parameters
-      const params = new URLSearchParams({
-        api_key: SCRAPER_API_KEY,
-        url: 'https://www.g2g.com/categories/lost-ark-gold?q=eu',
-        render: 'true',
-        timeout: '60000'
-      });
-      
-      const url = new URL(`${SCRAPER_API_URL}?${params.toString()}`);
-      
-      const options = {
-        hostname: url.hostname,
-        path: `${url.pathname}${url.search}`,
-        method: 'GET',
-        timeout: 90000
-      };
-
-      const req = https.request(options, (response) => {
-        let html = '';
-        
-        response.on('data', (chunk) => {
-          html += chunk;
-        });
-
-        response.on('end', () => {
-          try {
-            if (response.statusCode !== 200) {
-              throw new Error(`ScraperAPI returned status ${response.statusCode}`);
-            }
-    console.log('🔍 First 500 chars of HTML:', html.slice(0, 500));
-            const $ = cheerio.load(html);
-const results = [];
-
-// Find all offer-related elements
-$('*').each((i, el) => {
-  const cls = $(el).attr('class');
-  const text = $(el).text(); // ✅ Get element text
-
-  if (cls && cls.toLowerCase().includes('offer')) {
-    console.log('Found class:', cls);
-    console.log('Element text snippet:', text.slice(0, 100));
-
-    // Extract price
-    const priceMatch = text.match(/(\d+(?:\.\d+)?)\s*USD/i);
-    const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
-
-    // Extract offers count
-    const offersMatch = text.match(/(\d+)\s+offers?/i);
-    const offers = offersMatch ? parseInt(offersMatch[1], 10) : 0;
-
-    // Extract server name
-    const serverMatch = text.match(/(.+?(?:EU Central.*?))/i);
-    const server = serverMatch ? serverMatch[0].trim() : '';
-
-    if (server && price > 0) {
-      results.push({
-        server,
-        offers,
-        priceUSD: price,
-        valuePer100k: (100000 * price).toFixed(6),
-      });
-    }
-  }
-});
-
-
-            // Filter for EU Central servers
-            euServerData = results.filter(r => /EU Central/i.test(r.server));
-            console.log(`✅ Scraped ${euServerData.length} EU servers`);
-            lastError = null;
-            resolve();
-          } catch (err) {
-            console.error('❌ Parsing error:', err.message);
-            lastError = err.message;
-            resolve();
-          }
-        });
-      });
-
-      req.on('error', (err) => {
-        console.error('❌ Request error:', err.message);
-        lastError = err.message;
-        resolve();
-      });
-
-      req.on('timeout', () => {
-        console.error('❌ Request timed out');
-        lastError = 'Request timed out';
-        req.destroy();
-        resolve();
-      });
-
-      req.end();
-    } catch (err) {
-      console.error('❌ Setup error:', err.message);
-      lastError = err.message;
-      resolve();
-    }
+async function autoScroll(page) {
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      let total = 0;
+      const distance = 400;
+      const timer = setInterval(() => {
+        const scrollHeight = document.body.scrollHeight;
+        window.scrollBy(0, distance);
+        total += distance;
+        if (total >= scrollHeight - window.innerHeight) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 250);
+    });
   });
 }
 
-// Routes
-app.get('/', (req, res) => {
-  res.send(`
-    <h1>Lost Ark Gold Tracker</h1>
-    <p>Backend is running. Use <a href="/api/prices">/api/prices</a></p>
-    <p>Last error: ${lastError || 'None'}</p>
-    <p>Last data count: ${euServerData.length}</p>
-  `);
-});
+async function scrapeG2G() {
+  let browser;
+  try {
+    console.log('🚀 Launching Puppeteer...');
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-zygote',
+        '--single-process',
+      ]
+    });
+
+    const page = await browser.newPage();
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
+    );
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+    await page.setViewport({ width: 1280, height: 900 });
+
+    console.log('🌍 Navigating to G2G...');
+    await page.goto('https://www.g2g.com/categories/lost-ark-gold', {
+      waitUntil: 'networkidle2',
+      timeout: 60000
+    });
+
+    // Wait for cards to load
+    await page.waitForSelector('div.q-pa-md', { timeout: 25000 });
+
+    // Scroll to trigger lazy load
+    await autoScroll(page);
+
+    // Ensure prices are visible
+    await page.waitForFunction(
+      () => Array.from(document.querySelectorAll('span')).some(s => /\bUSD\b/i.test(s.textContent)),
+      { timeout: 20000 }
+    );
+
+    // Scrape data inside the browser context
+    const raw = await page.evaluate(() => {
+      const usdSpans = Array.from(document.querySelectorAll('span')).filter(s => /\bUSD\b/i.test(s.textContent));
+      const map = new Map();
+
+      usdSpans.forEach(usdSpan => {
+        const card = usdSpan.closest('div.q-pa-md') || usdSpan.closest('.col-sm-6') || usdSpan.closest('a');
+        if (!card) return;
+
+        let price = 0;
+        if (usdSpan.previousElementSibling && /[0-9]+\.[0-9]+/.test(usdSpan.previousElementSibling.textContent)) {
+          price = parseFloat(usdSpan.previousElementSibling.textContent.replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+        }
+
+        let offers = 0;
+        const offersEl = card.querySelector('.g-chip-counter');
+        if (offersEl) {
+          const n = offersEl.textContent.replace(/\D/g, '');
+          offers = n ? parseInt(n, 10) : 0;
+        }
+
+        let server = '';
+        const spanWithDash = Array.from(card.querySelectorAll('span')).find(s => / - /.test(s.textContent));
+        if (spanWithDash) server = spanWithDash.textContent.trim();
+
+        if (!map.has(server)) {
+          map.set(server, {
+            server,
+            offers,
+            priceUSD: price,
+            valuePer100k: price ? (100000 * price).toFixed(6) : '0.000000'
+          });
+        }
+      });
+
+      return Array.from(map.values());
+    });
+
+    euServerData = raw.filter(r => /EU Central/i.test(r.server));
+    console.log(`✅ Scraped ${euServerData.length} EU servers`);
+
+  } catch (err) {
+    console.error('❌ Scraping error:', err);
+  } finally {
+    if (browser) await browser.close();
+  }
+}
+
+// Run immediately + schedule every 30 min
+scrapeG2G();
+cron.schedule('*/30 * * * *', scrapeG2G);
 
 app.get('/api/prices', (req, res) => {
   if (euServerData.length > 0) {
-    res.json({
-      lastUpdated: new Date(),
-      servers: euServerData
-    });
+    res.json({ lastUpdated: new Date(), servers: euServerData });
   } else {
-    res.status(503).json({
-      message: 'Data not available yet',
-      error: lastError || 'Scraper initializing'
-    });
+    res.status(503).json({ message: 'No server data available', servers: [] });
   }
 });
 
-// Initial run
-scrapeG2G();
+app.get('/', (req, res) => res.send('✅ Gold Tracker backend is running'));
 
-// Schedule every 45 minutes
-cron.schedule('*/45 * * * *', () => {
-  console.log('⏰ Running scheduled scrape');
-  scrapeG2G();
-});
-
-// Start server
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

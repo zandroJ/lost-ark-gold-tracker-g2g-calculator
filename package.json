@@ -1,17 +1,14 @@
 {
-  "name": "lost-ark-backend",
+  "name": "gold-tracker-backend",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "cheerio": "^1.0.0-rc.12",
     "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "node-cron": "^3.0.3"
-  },
-  "engines": {
-    "node": ">=20"
+    "express": "^5.1.0",
+    "node-cron": "^4.2.1",
+    "puppeteer": "^24.16.1"
   }
 }
