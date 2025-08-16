@@ -57,30 +57,29 @@ async function scrapeG2G() {
     });
 
     // Wait for cards to load
-await page.waitForSelector('div.q-pa-md', { timeout: 60000 });
+    await page.waitForSelector('div.q-pa-md', { timeout: 60000 });
+
     // Scroll to trigger lazy load
-await autoScroll(page);
-    // Ensure prices are visible
-    await new Promise(r => setTimeout(r, 10000)); // wait 10s for sellers
+    await autoScroll(page);
+
+    // Give sellers extra time
+    await new Promise(r => setTimeout(r, 10000));
 
     try {
-  await page.waitForFunction(
-    () => Array.from(document.querySelectorAll('span')).some(s => /\bUSD\b/i.test(s.textContent)),
-    { timeout: 60000 }   // increased from 20000 → 60000
-  );
-  // Save screenshot
-await page.screenshot({ path: 'debug.png', fullPage: true });
+      await page.waitForFunction(
+        () => Array.from(document.querySelectorAll('span')).some(s => /\bUSD\b/i.test(s.textContent)),
+        { timeout: 60000 }
+      );
+    } catch (e) {
+      console.warn('⚠️ USD spans not found in time, continuing anyway...');
+    }
 
-// Save page HTML
-const html = await page.content();
-const fs = require('fs');
-fs.writeFileSync('debug.html', html);
+    // Save debug artifacts ALWAYS
+    await page.screenshot({ path: 'debug.png', fullPage: true });
+    const html = await page.content();
+    fs.writeFileSync('debug.html', html);
 
-} catch (e) {
-  console.warn('⚠️ USD spans not found in time, continuing anyway...');
-}
-
-    // Scrape data inside the browser context
+    // Scrape data
     const raw = await page.evaluate(() => {
       const usdSpans = Array.from(document.querySelectorAll('span')).filter(s => /\bUSD\b/i.test(s.textContent));
       const map = new Map();
@@ -127,6 +126,7 @@ fs.writeFileSync('debug.html', html);
     if (browser) await browser.close();
   }
 }
+
 
 // Run immediately + schedule every 30 min
 scrapeG2G();
