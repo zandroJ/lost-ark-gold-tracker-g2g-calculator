@@ -1,115 +1,113 @@
 // server.js
 const express = require("express");
 const cors = require("cors");
-const puppeteer = require('puppeteer-core');
-const cheerio = require("cheerio");
+const puppeteer = require("puppeteer");
 const cron = require("node-cron");
 
 const app = express();
 app.use(cors());
 
 let euServerData = [];
-let lastScrapeTime = null;
+
+// Helper: scroll page so all offers load
+async function autoScroll(page) {
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      let total = 0;
+      const distance = 400;
+      const timer = setInterval(() => {
+        window.scrollBy(0, distance);
+        total += distance;
+        if (total >= document.body.scrollHeight - window.innerHeight) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 250);
+    });
+  });
+}
 
 // Scraper function
 async function scrapeG2G() {
+  let browser;
   try {
     console.log("🚀 Starting Puppeteer scrape...");
-
- const browser = await puppeteer.launch({
-  headless: true,
-  args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium"  // 👈 important
-});
-
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    });
 
     const page = await browser.newPage();
-
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-      "AppleWebKit/537.36 (KHTML, like Gecko) " +
-      "Chrome/117.0.0.0 Safari/537.36"
+        "AppleWebKit/537.36 (KHTML, like Gecko) " +
+        "Chrome/117.0.0.0 Safari/537.36"
     );
 
     await page.goto("https://www.g2g.com/categories/lost-ark-gold", {
       waitUntil: "networkidle2",
-      timeout: 30000
+      timeout: 60000
     });
 
-    const html = await page.content();
-    const $ = cheerio.load(html);
-    const serverMap = new Map();
+    await page.waitForSelector("div.q-pa-md", { timeout: 25000 });
+    await autoScroll(page);
 
-    $("div.offer-list-item-wrapper").each((i, element) => {
-      const card = $(element);
+    // Extract
+    const raw = await page.evaluate(() => {
+      const results = [];
+      document.querySelectorAll("div.q-pa-md").forEach((card) => {
+        const text = card.innerText;
 
-      let server =
-        card.find(".offer-seller a").first().text().trim() ||
-        card.find(".text-body1.ellipsis-2-lines").first().text().trim() ||
-        card.find(".text-h6").first().text().trim();
+        const usdMatch = text.match(/([0-9]+\.[0-9]+)\s*USD/i);
+        const price = usdMatch ? parseFloat(usdMatch[1]) : 0;
 
-      const priceText =
-        card.find(".offer-price-amount").first().text().trim() ||
-        card.find(".price").first().text().trim();
-      const priceMatch = priceText.match(/[\d.]+/);
-      const price = priceMatch ? parseFloat(priceMatch[0]) : 0;
+        const offersMatch = text.match(/(\d+)\s+offers?/i);
+        const offers = offersMatch ? parseInt(offersMatch[1], 10) : 0;
 
-      const offersText =
-        card.find(".offer-stock").first().text().trim() ||
-        card.find(".stock").first().text().trim();
-      const offersMatch = offersText.match(/\d+/);
-      const offers = offersMatch ? parseInt(offersMatch[0], 10) : 0;
+        const serverMatch = text.match(/(.+?)\s*-\s*EU Central/i);
+        const server = serverMatch ? serverMatch[0].trim() : "";
 
-      if (server && /EU Central/i.test(server)) {
-        server = server.replace(/\s+-\s+EU Central/i, "").trim();
-        if (!serverMap.has(server) && price > 0) {
-          serverMap.set(server, {
+        if (server && price > 0) {
+          results.push({
             server,
             offers,
             priceUSD: price,
-            valuePer100k: (100000 * price).toFixed(6)
+            valuePer100k: (100000 * price).toFixed(6),
           });
         }
-      }
+      });
+      return results;
     });
 
-    await browser.close();
+    euServerData = raw;
+    console.log(`✅ Scraped ${euServerData.length} servers`);
 
-    euServerData = Array.from(serverMap.values()).sort(
-      (a, b) => a.priceUSD - b.priceUSD
-    );
-    lastScrapeTime = new Date();
-
-    console.log(`✅ Found ${euServerData.length} EU Central servers`);
-    if (euServerData.length) {
-      console.log(
-        `📊 First server: ${euServerData[0].server} - $${euServerData[0].priceUSD}`
-      );
-    }
   } catch (err) {
-    console.error("❌ Scraping error:", err.message);
+    console.error("❌ Scraping error:", err);
+  } finally {
+    if (browser) await browser.close();
   }
 }
 
-// API endpoint
+// Routes
+app.get("/", (req, res) => {
+  res.send("✅ Lost Ark Gold Tracker backend is running. Use /api/prices");
+});
+
 app.get("/api/prices", (req, res) => {
   if (!euServerData.length) {
     return res.json({ message: "No server data available. Try again later." });
   }
   res.json({
-    lastUpdated: lastScrapeTime,
-    servers: euServerData
+    lastUpdated: new Date(),
+    servers: euServerData,
   });
 });
 
-// Run scrape every 30 mins
+// Schedule scraper
 cron.schedule("*/30 * * * *", scrapeG2G);
-
-// Run immediately on startup
 scrapeG2G();
 
 // Start server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
