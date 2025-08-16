@@ -144,3 +144,23 @@ app.get('/', (req, res) => res.send('✅ Gold Tracker backend is running'));
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+const fs = require('fs');
+const path = require('path');
+
+app.get('/debug/screenshot', (req, res) => {
+  const filePath = path.join(__dirname, 'debug.png');
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('Screenshot not found');
+  }
+});
+
+app.get('/debug/html', (req, res) => {
+  const filePath = path.join(__dirname, 'debug.html');
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('HTML not found');
+  }
+});
