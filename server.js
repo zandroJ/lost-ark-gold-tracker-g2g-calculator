@@ -49,7 +49,7 @@ async function scrapeG2G() {
             if (response.statusCode !== 200) {
               throw new Error(`ScraperAPI returned status ${response.statusCode}`);
             }
-
+    console.log('🔍 First 500 chars of HTML:', html.slice(0, 500));
             const $ = cheerio.load(html);
 const results = [];
 
@@ -120,7 +120,6 @@ $('*').each((i, el) => {
     }
   });
 }
-console.log('🔍 First 500 chars of HTML:', html.slice(0, 500));
 
 // Routes
 app.get('/', (req, res) => {
