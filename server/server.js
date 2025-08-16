@@ -1,7 +1,7 @@
 // server.js
 const express = require("express");
 const cors = require("cors");
-const puppeteer = require("puppeteer");
+const puppeteer = require('puppeteer-core');
 const cheerio = require("cheerio");
 const cron = require("node-cron");
 
@@ -16,10 +16,12 @@ async function scrapeG2G() {
   try {
     console.log("🚀 Starting Puppeteer scrape...");
 
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    });
+ const browser = await puppeteer.launch({
+  headless: true,
+  args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium"  // 👈 important
+});
+
 
     const page = await browser.newPage();
 
