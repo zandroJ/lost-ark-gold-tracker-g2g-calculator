@@ -51,7 +51,7 @@ async function scrapeG2G() {
     await page.setViewport({ width: 1280, height: 900 });
 
     console.log('🌍 Navigating to G2G...');
-    await page.goto('https://www.g2g.com/categories/lost-ark-gold', {
+    await page.goto('https://www.g2g.com/categories/lost-ark-gold?q=eu', {
       waitUntil: 'networkidle2',
       timeout: 60000
     });
