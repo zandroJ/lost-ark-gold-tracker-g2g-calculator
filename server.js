@@ -9,6 +9,9 @@ app.use(cors());
 // Get your API key from scraperapi.com dashboard
 const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY;
 const SCRAPER_API_URL = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=`;
+if (!SCRAPER_API_KEY) {
+  console.error("❌ Missing SCRAPER_API_KEY environment variable.");
+}
 
 let euServerData = [];
 
@@ -45,18 +48,18 @@ function extractOfferData(html) {
   const offerRegex = /<div[^>]*class="[^"]*sell-offer-card[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
   let match;
   
-  while ((match = offerRegex.exec(html)) {
+  while ((match = offerRegex.exec(html))) { // ✅ fixed parenthesis
     const offerHtml = match[1];
     const text = offerHtml.replace(/<[^>]*>/g, " "); // Remove HTML tags
     
-    // Extract data using more flexible regex
-    const serverMatch = text.match(/(EU Central[^|]+)/i);
+    // Extract data using regex
+    const serverMatch = text.match(/([A-Za-z0-9\s]+)\s*-\s*EU Central/i);
     const priceMatch = text.match(/(\d+\.\d+)\s*USD/i);
     const offersMatch = text.match(/(\d+)\s+offers?/i);
     
     if (serverMatch && priceMatch) {
       offers.push({
-        server: serverMatch[1].trim(),
+        server: serverMatch[0].trim(),
         priceUSD: parseFloat(priceMatch[1]),
         offers: offersMatch ? parseInt(offersMatch[1], 10) : 1
       });
@@ -65,6 +68,7 @@ function extractOfferData(html) {
   
   return offers;
 }
+
 
 // Process and group offers
 function processOffers(offers) {
