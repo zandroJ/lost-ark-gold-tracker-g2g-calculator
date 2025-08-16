@@ -1,9 +1,11 @@
 // server.js
 const express = require("express");
 const cors = require("cors");
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-extra"); // ⬅️ change here
+const StealthPlugin = require("puppeteer-extra-plugin-stealth"); // ⬅️ add this
 const cron = require("node-cron");
 
+puppeteer.use(StealthPlugin()); // ⬅️ activate stealth
 const app = express();
 app.use(cors());
 
@@ -34,8 +36,12 @@ async function scrapeG2G() {
     console.log("🚀 Starting Puppeteer scrape...");
     browser = await puppeteer.launch({
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    });
+      args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage", // memory fix for Railway
+    "--disable-blink-features=AutomationControlled" // stealth helper]
+    ]});
 
     const page = await browser.newPage();
     await page.setUserAgent(
@@ -48,6 +54,10 @@ async function scrapeG2G() {
   waitUntil: "domcontentloaded",
   timeout: 60000
 });
+await page.waitForTimeout(5000); // wait 5s for JS to render
+console.log("Checking page for USD...");
+const bodyText = await page.evaluate(() => document.body.innerText);
+console.log("Snippet:", bodyText.slice(0, 500));
 
 // wait for main offers container
 await page.waitForSelector(".sell-offer-card, div.q-pa-md", { timeout: 30000 });
