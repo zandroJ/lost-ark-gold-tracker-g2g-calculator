@@ -31,7 +31,14 @@ async function autoScroll(page) {
     });
   });
 }
-
+try {
+  console.log('Checking Chromium at /usr/bin/chromium-browser:', 
+    fs.existsSync('/usr/bin/chromium-browser'));
+  console.log('Checking Chromium at /usr/bin/chromium:', 
+    fs.existsSync('/usr/bin/chromium'));
+} catch (e) {
+  console.error('File check error:', e);
+}
 async function scrapeG2G() {
   let browser;
   try {
@@ -41,18 +48,12 @@ async function scrapeG2G() {
     const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
     console.log(`Using Chromium at: ${executablePath}`);
     
-    browser = await puppeteer.launch({
-      headless: true,
-      executablePath,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--single-process'
-      ],
-      ignoreHTTPSErrors: true
-    });
+    // Verify the path exists
+    const pathExists = fs.existsSync(executablePath);
+    console.log(`Chromium exists at path: ${pathExists}`);
+    if (!pathExists) {
+      throw new Error(`Chromium not found at ${executablePath}`);
+    }
 
     const page = await browser.newPage();
     await page.setUserAgent(

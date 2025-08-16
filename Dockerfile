@@ -40,9 +40,12 @@ RUN apt-get update && \
     wget \
     xdg-utils
 
+# Create a symlink to the correct Chromium path
+RUN ln -s /usr/bin/chromium /usr/bin/chromium-browser
+
 # Set Puppeteer config
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 WORKDIR /app
 
