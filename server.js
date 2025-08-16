@@ -71,7 +71,7 @@ $('*').each((i, el) => {
     const offers = offersMatch ? parseInt(offersMatch[1], 10) : 0;
 
     // Extract server name
-    const serverMatch = text.match(/(.+?)\s*-\s*EU Central/i);
+    const serverMatch = text.match(/(.+?(?:EU Central.*?))/i);
     const server = serverMatch ? serverMatch[0].trim() : '';
 
     if (server && price > 0) {
@@ -120,6 +120,7 @@ $('*').each((i, el) => {
     }
   });
 }
+console.log('🔍 First 500 chars of HTML:', html.slice(0, 500));
 
 // Routes
 app.get('/', (req, res) => {
