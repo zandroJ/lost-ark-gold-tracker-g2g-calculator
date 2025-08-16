@@ -15,8 +15,7 @@ A simple gold value calculator for Lost Ark players to track gold-to-USD convers
 
 ---
 
-## Installation
+## Deployment environment is still under construction
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-username/lost-ark-gold-calculator.git
+
+ 
