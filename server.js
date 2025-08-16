@@ -44,40 +44,45 @@ async function scrapeG2G() {
         "Chrome/117.0.0.0 Safari/537.36"
     );
 
-    await page.goto("https://www.g2g.com/categories/lost-ark-gold", {
-      waitUntil: "networkidle2",
-      timeout: 60000
-    });
+    await page.goto("https://www.g2g.com/categories/lost-ark-gold?q=eu", {
+  waitUntil: "domcontentloaded",
+  timeout: 60000
+});
 
-    await page.waitForSelector("div.q-pa-md", { timeout: 25000 });
-    await autoScroll(page);
+// wait for main offers container
+await page.waitForSelector(".sell-offer-card, div.q-pa-md", { timeout: 30000 });
+await autoScroll(page);
 
-    // Extract
-    const raw = await page.evaluate(() => {
-      const results = [];
-      document.querySelectorAll("div.q-pa-md").forEach((card) => {
-        const text = card.innerText;
+// extract offers
+const raw = await page.evaluate(() => {
+  const results = [];
+  const cards = document.querySelectorAll(".sell-offer-card, div.q-pa-md");
+  cards.forEach((card) => {
+    const text = card.innerText;
 
-        const usdMatch = text.match(/([0-9]+\.[0-9]+)\s*USD/i);
-        const price = usdMatch ? parseFloat(usdMatch[1]) : 0;
+    const usdMatch = text.match(/([0-9]+\.[0-9]+)\s*USD/i);
+    const price = usdMatch ? parseFloat(usdMatch[1]) : 0;
 
-        const offersMatch = text.match(/(\d+)\s+offers?/i);
-        const offers = offersMatch ? parseInt(offersMatch[1], 10) : 0;
+    const offersMatch = text.match(/(\d+)\s+offers?/i);
+    const offers = offersMatch ? parseInt(offersMatch[1], 10) : 0;
 
-        const serverMatch = text.match(/(.+?)\s*-\s*EU Central/i);
-        const server = serverMatch ? serverMatch[0].trim() : "";
+    const serverMatch = text.match(/(.+?)\s*-\s*EU Central/i);
+    const server = serverMatch ? serverMatch[0].trim() : "";
 
-        if (server && price > 0) {
-          results.push({
-            server,
-            offers,
-            priceUSD: price,
-            valuePer100k: (100000 * price).toFixed(6),
-          });
-        }
+    if (server && price > 0) {
+      results.push({
+        server,
+        offers,
+        priceUSD: price,
+        valuePer100k: (100000 * price).toFixed(6),
       });
-      return results;
-    });
+    }
+  });
+  return results;
+});
+const html = await page.content();
+console.log("PAGE HTML LENGTH:", html.length);
+console.log("PAGE SNIPPET:", html.slice(0, 500));
 
     euServerData = raw;
     console.log(`✅ Scraped ${euServerData.length} servers`);
