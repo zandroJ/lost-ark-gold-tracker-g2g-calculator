@@ -38,7 +38,7 @@ const GoldTracker = () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await axios.get('https://lost-ark-gold-tracker-g2g-calculator.onrender.com/api/prices');
+        const response = await axios.get('lost-ark-backend-production.up.railway.app/api/prices');
         if (!mounted) return;
 
         // Ensure it's an array
