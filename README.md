@@ -36,7 +36,7 @@ A full-stack web app that tracks **gold-to-USD conversion rates** for Lost Ark E
 ### **Backend**
 - 🟢 **Node.js** – server runtime  
 - 🚀 **Express.js** – lightweight API server  
-- 🕷️ **Cheerio** (or Puppeteer if you switched) – web scraping G2G marketplace  
+- 🕷️ **Puppeteer** – web scraping G2G marketplace  
 - ⏱️ **node-cron** – scheduled scraping every 5 minutes  
 - 🌐 **CORS** enabled for frontend-backend communication  
 
