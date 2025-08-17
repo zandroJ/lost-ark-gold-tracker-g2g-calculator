@@ -9,11 +9,6 @@ const GoldTracker = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Determine backend URL
-  const backendUrl = process.env.NODE_ENV === 'development' 
-    ? 'https://lost-ark-backend-production.up.railway.app'
-    : '';
-
   // Format numbers with commas
   const formatNumber = (num) => {
     if (!Number.isFinite(num)) return '0';
@@ -43,13 +38,11 @@ const GoldTracker = () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await axios.get(`${backendUrl}/api/prices`);
+        const response = await axios.get('lost-ark-backend-production.up.railway.app/api/prices');
         if (!mounted) return;
 
         // Ensure it's an array
-        const data = Array.isArray(response.data?.servers) 
-          ? response.data.servers 
-          : [];
+        const data = Array.isArray(response.data) ? response.data : [];
 
         // Normalize and sort by numeric price
         const normalized = data.map(d => {
@@ -74,7 +67,7 @@ const GoldTracker = () => {
         setSelectedServer(firstValid || normalized[0] || null);
       } catch (err) {
         console.error('Error fetching data:', err);
-        setError('Could not fetch server prices. Please try again later.');
+        setError('Could not fetch server prices.');
       } finally {
         setLoading(false);
       }
@@ -86,7 +79,7 @@ const GoldTracker = () => {
       mounted = false;
       clearInterval(interval);
     };
-  }, [backendUrl]);
+  }, []);
 
   // Calculate values
   const goldNumber = Number(goldAmount) || 0;
@@ -148,20 +141,16 @@ const GoldTracker = () => {
 
           {!loading && servers.length > 0 && (
             <div className="servers-grid">
-              {servers.map((server, index) => {
+              {servers.map(server => {
                 const isActive = selectedServer && selectedServer.server === server.server;
-                const serverName = server.server.includes('-') 
-                  ? server.server.split('-')[0].trim() 
-                  : server.server;
-                
                 return (
                   <div
-                    key={server.server || index}
+                    key={server.server || Math.random()}
                     onClick={() => setSelectedServer(server)}
                     className={`server-card ${isActive ? 'active' : ''}`}
                   >
                     <div className="card-header">
-                      <div className="server-name">{serverName}</div>
+                      <div className="server-name">{server.server.split('-')[0].trim()}</div>
                       <div className={`server-status ${isActive ? 'active' : ''}`}>
                         {isActive ? 'SELECTED' : 'AVAILABLE'}
                       </div>
@@ -221,6 +210,10 @@ const GoldTracker = () => {
           </div>
         </div>
       </div>
+      
+      {/* <div className="app-footer">
+        <p>Enjoy! And if you desire, make a donation to support me to continue updating this project.</p>
+      </div> */}
     </div>
   );
 };
