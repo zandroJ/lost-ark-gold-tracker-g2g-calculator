@@ -35,43 +35,44 @@ const GoldTracker = () => {
   useEffect(() => {
     let mounted = true;
     const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await axios.get('https://lost-ark-backend-production.up.railway.app/api/prices');
-        if (!mounted) return;
+  setLoading(true);
+  setError(null);
+  try {
+    const response = await axios.get('https://lost-ark-backend-production.up.railway.app/api/prices');
+    if (!mounted) return;
 
-        // Ensure it's an array
-        const data = Array.isArray(response.data) ? response.data : [];
+    // FIX: use servers array from API response
+    const data = Array.isArray(response.data.servers) ? response.data.servers : [];
 
-        // Normalize and sort by numeric price
-        const normalized = data.map(d => {
-          const price = parsePrice(d.priceUSD);
-          return {
-            server: d.server || '',
-            offers: Number.isFinite(Number(d.offers)) ? Number(d.offers) : 0,
-            priceUSD: Number.isFinite(price) ? price : 0
-          };
-        });
+    // Normalize and sort by numeric price
+    const normalized = data.map(d => {
+      const price = parsePrice(d.priceUSD);
+      return {
+        server: d.server || '',
+        offers: Number.isFinite(Number(d.offers)) ? Number(d.offers) : 0,
+        priceUSD: Number.isFinite(price) ? price : 0
+      };
+    });
 
-        normalized.sort((a, b) => {
-          const pa = a.priceUSD > 0 ? a.priceUSD : Number.POSITIVE_INFINITY;
-          const pb = b.priceUSD > 0 ? b.priceUSD : Number.POSITIVE_INFINITY;
-          return pa - pb;
-        });
+    normalized.sort((a, b) => {
+      const pa = a.priceUSD > 0 ? a.priceUSD : Number.POSITIVE_INFINITY;
+      const pb = b.priceUSD > 0 ? b.priceUSD : Number.POSITIVE_INFINITY;
+      return pa - pb;
+    });
 
-        setServers(normalized);
+    setServers(normalized);
 
-        // Set default server
-        const firstValid = normalized.find(s => s.priceUSD > 0);
-        setSelectedServer(firstValid || normalized[0] || null);
-      } catch (err) {
-        console.error('Error fetching data:', err);
-        setError('Could not fetch server prices.');
-      } finally {
-        setLoading(false);
-      }
-    };
+    // Set default server
+    const firstValid = normalized.find(s => s.priceUSD > 0);
+    setSelectedServer(firstValid || normalized[0] || null);
+  } catch (err) {
+    console.error('Error fetching data:', err);
+    setError('Could not fetch server prices.');
+  } finally {
+    setLoading(false);
+  }
+};
+
 
     fetchData();
     const interval = setInterval(fetchData, 300000); // refresh every 5 minutes
@@ -216,6 +217,7 @@ const GoldTracker = () => {
       </div> */}
     </div>
   );
+
 };
 
 export default GoldTracker;
