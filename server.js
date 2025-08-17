@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const cors = require('cors');
 const puppeteer = require('puppeteer');
@@ -130,7 +129,7 @@ async function scrapeG2G() {
 
 // Run immediately + schedule every 30 min
 scrapeG2G();
-cron.schedule('*/30 * * * *', scrapeG2G);
+cron.schedule('0 */2 * * * *', scrapeG2G);
 
 app.get('/api/prices', (req, res) => {
   if (euServerData.length > 0) {
