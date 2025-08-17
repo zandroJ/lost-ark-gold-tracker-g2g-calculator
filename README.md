@@ -1,6 +1,6 @@
 # Lost Ark Gold Value Calculator
 
-A simple gold value calculator for Lost Ark players to track gold-to-USD conversion rates on EU servers via web scraping from the official G2G marketplace.
+A full-stack web app that tracks **gold-to-USD conversion rates** for Lost Ark EU players by scraping live data from the official G2G marketplace.
 
 ## Features
 
@@ -15,7 +15,39 @@ A simple gold value calculator for Lost Ark players to track gold-to-USD convers
 
 ---
 
-## Deployment environment is still under construction
+## How It Works
+
+1. **Scraping** – The backend uses Puppeteer to scrape live marketplace prices for Lost Ark gold directly from G2G.  
+2. **Processing** – Data is cleaned and formatted (server name, offer count, price per 100k gold).  
+3. **API Endpoint** – The processed data is exposed at `/api/prices`.  
+4. **Frontend Fetching** – The React frontend calls this endpoint and displays results in a clean, user-friendly interface.  
+5. **Auto Refresh** – Prices are automatically refreshed every 5 minutes to stay current.  
+
+---
+
+## Tech Stack
+
+### **Frontend**
+- ⚛️ **React** – core framework for UI  
+- 🎨 **CSS / custom styling** – responsive layouts and clean design  
+- 📦 **Axios** – API requests from backend  
+- 🔄 **React Hooks** (`useState`, `useEffect`) for state management  
+
+### **Backend**
+- 🟢 **Node.js** – server runtime  
+- 🚀 **Express.js** – lightweight API server  
+- 🕷️ **Cheerio** (or Puppeteer if you switched) – web scraping G2G marketplace  
+- ⏱️ **node-cron** – scheduled scraping every 5 minutes  
+- 🌐 **CORS** enabled for frontend-backend communication  
+
+### **Deployment**
+- ☁️ **Railway.app** – backend hosting  
+- 🌍 **Render.com** – frontend hosting  
+
+---
+
+## Deployment Status
+Frontend & backend are live, but deployment environments may still be under refinement.
 
 
  
