@@ -212,9 +212,7 @@ const GoldTracker = () => {
         </div>
       </div>
       
-      {/* <div className="app-footer">
-        <p>Enjoy! And if you desire, make a donation to support me to continue updating this project.</p>
-      </div> */}
+  
     </div>
   );
 
